@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wardrobe Picker</title>
+  <link rel="manifest" href="./manifest.json">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased">
+
+  <div x-data="wardrobeApp()" x-init="init()" class="max-w-md mx-auto p-6 min-h-screen flex flex-col justify-between">
+    
+    <header class="text-center py-4">
+      <h1 class="text-3xl font-extrabold text-indigo-600 tracking-tight">Closet Seed</h1>
+      <p class="text-sm text-slate-500 mt-1">Pick an item to build your outfit around</p>
+    </header>
+
+    <main class="flex-grow flex flex-col justify-center my-8 space-y-6">
+      
+      <div class="bg-white p-4 rounded-2xl shadow-xs border border-slate-100 space-y-4">
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Tag/Occasion</label>
+          <select x-model="selectedTag" class="w-full p-3 rounded-xl bg-slate-100 border-none text-sm focus:ring-2 focus:ring-indigo-500">
+            <option value="">Any Tag</option>
+            <template x-for="tag in availableTags" :key="tag">
+              <option :value="tag" x-text="tag"></option>
+            </template>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Color</label>
+          <select x-model="selectedColor" class="w-full p-3 rounded-xl bg-slate-100 border-none text-sm focus:ring-2 focus:ring-indigo-500">
+            <option value="">Any Color</option>
+            <template x-for="color in availableColors" :key="color">
+              <option :value="color" x-text="color"></option>
+            </template>
+          </select>
+        </div>
+      </div>
+
+      <div class="bg-indigo-600 text-white p-8 rounded-3xl shadow-xl min-h-[180px] flex flex-col justify-center items-center text-center relative overflow-hidden transition-all duration-300">
+        <template x-if="rolledItem">
+          <div>
+            <span class="text-xs font-bold uppercase tracking-widest bg-indigo-500 px-3 py-1 rounded-full text-indigo-100" x-text="rolledItem.category"></span>
+            <h2 class="text-2xl font-bold mt-3" x-text="rolledItem.name"></h2>
+            <p class="text-xs text-indigo-200 mt-2" x-text="'Color: ' + rolledItem.color + ' • ' + rolledItem.tags.join(', ')"></p>
+          </div>
+        </template>
+        <template x-if="!rolledItem">
+          <p class="text-indigo-100 font-medium">Ready to roll? Pick your criteria above.</p>
+        </template>
+      </div>
+
+    </main>
+
+    <footer class="space-y-3 pb-6">
+      <button @click="roll()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-2xl shadow-lg transform active:scale-95 transition-all text-center cursor-pointer">
+        <span x-text="rolledItem ? '🎲 Re-Roll' : '🎲 Roll Outfit Seed'"></span>
+      </button>
+
+      <template x-if="rolledItem">
+        <button @click="acceptOutfit()" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3 px-6 rounded-2xl transition-all text-center cursor-pointer">
+          ✅ Wear This Today
+        </button>
+      </template>
+    </footer>
+
+  </div>
+
+  <script>
+    // Register Service Worker for PWA
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js');
+    }
+
+    function wardrobeApp() {
+      return {
+        // --- 1. HARDCODED WARDROBE DATA ---
+        wardrobe: [
+          { id: 1, name: "Blue Oxford Shirt", category: "Top", color: "Blue", tags: ["Work", "Casual"] },
+          { id: 2, name: "Black Chinos", category: "Bottom", color: "Black", tags: ["Work", "Casual"] },
+          { id: 3, name: "Grey Merino Sweater", category: "Top", color: "Grey", tags: ["Work", "Casual"] },
+          { id: 4, name: "Olive Cargo Pants", category: "Bottom", color: "Olive", tags: ["Casual"] },
+          { id: 5, name: "Black Gym Shorts", category: "Bottom", color: "Black", tags: ["Workout"] },
+          { id: 6, name: "White Tech Tee", category: "Top", color: "White", tags: ["Workout", "Casual"] },
+          { id: 7, name: "Navy Blazer", category: "Outerwear", color: "Navy", tags: ["Work"] }
+        ],
+        
+        // State
+        history: {}, // Maps id -> ISO string date
+        selectedTag: '',
+        selectedColor: '',
+        rolledItem: null,
+        ignoredIds: [],
+        availableTags: [],
+        availableColors: [],
+
+        init() {
+          // Load history from localStorage
+          const savedHistory = localStorage.getItem('wardrobe_history');
+          if (savedHistory) this.history = JSON.parse(savedHistory);
+
+          // Extract unique tags and colors for UI dropdowns
+          const tagsSet = new Set();
+          const colorsSet = new Set();
+          this.wardrobe.forEach(item => {
+            item.tags.forEach(t => tagsSet.add(t));
+            colorsSet.add(item.color);
+          });
+          this.availableTags = Array.from(tagsSet).sort();
+          this.availableColors = Array.from(colorsSet).sort();
+        },
+
+        roll() {
+          // 1. Filter by criteria
+          let pool = this.wardrobe.filter(item => {
+            const matchTag = this.selectedTag ? item.tags.includes(this.selectedTag) : true;
+            const matchColor = this.selectedColor ? item.color === this.selectedColor : true;
+            const notIgnored = !this.ignoredIds.includes(item.id);
+            return matchTag && matchColor && notIgnored;
+          });
+
+          if (pool.length === 0) {
+            alert("No available clothes match these criteria (or you ignored them all)!");
+            this.ignoredIds = []; // Clear ignores on dead end
+            return;
+          }
+
+          // 2. Filter by Cooldown (Unworn or worn > 21 days ago)
+          const now = new Date();
+          const threeWeeksAgo = new Date(now.getTime() - (21 * 24 * 60 * 60 * 1000));
+          
+          let cooledDownPool = pool.filter(item => {
+            if (!this.history[item.id]) return true; // Never worn
+            const lastWornDate = new Date(this.history[item.id]);
+            return lastWornDate < threeWeeksAgo;
+          });
+
+          let finalSelection;
+
+          // 3. Fallback if everything has been worn within 3 weeks (Worn through the rotation)
+          if (cooledDownPool.length === 0) {
+            // Sort by oldest last_worn timestamp. 
+            // Items never worn (though caught by step 2, adding sanity check) come first.
+            pool.sort((a, b) => {
+              const dateA = this.history[a.id] ? new Date(this.history[a.id]) : new Date(0);
+              const dateB = this.history[b.id] ? new Date(this.history[b.id]) : new Date(0);
+              return dateA - dateB;
+            });
+            finalSelection = pool[0];
+          } else {
+            // Pick random from eligible pool
+            finalSelection = cooledDownPool[Math.floor(Math.random() * cooledDownPool.length)];
+          }
+
+          // Update UI state
+          if (this.rolledItem) {
+            this.ignoredIds.push(this.rolledItem.id); // Add current item to ignore list in case they re-roll again
+          }
+          this.rolledItem = finalSelection;
+        },
+
+        acceptOutfit() {
+          if (!this.rolledItem) return;
+          
+          // Log today's timestamp
+          this.history[this.rolledItem.id] = new Date().toISOString();
+          localStorage.setItem('wardrobe_history', JSON.stringify(this.history));
+          
+          alert(`Awesome! Enjoy wearing your ${this.rolledItem.name} today.`);
+          
+          // Reset session tracking
+          this.rolledItem = null;
+          this.ignoredIds = [];
+        }
+      }
+    }
+  </script>
+</body>
+</html>
