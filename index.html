@@ -14,6 +14,8 @@
             display: none !important;
         }
     </style>
+    <link rel="apple-touch-icon" href="assets/hanger_icon.png">
+    <link rel="icon" type="image/png" href="assets/hanger_icon.png">
 </head>
 
 <body class="bg-slate-50 text-slate-800 font-sans antialiased">
@@ -664,7 +666,7 @@
                         this.updateDropdownFilters();
                         this.isEditModalOpen = false;
                         alert("Changes saved to cloud successfully!");
-                        this.editingItem.image = ''; 
+                        this.editingItem.image = '';
                     } else {
                         console.error("SUPABASE ERROR:", error); // Logs the real reason to the console
                         alert("Error updating row: " + error.message);
